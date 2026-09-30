@@ -196,7 +196,14 @@ const MEMBERS = [
 
 type Member = typeof MEMBERS[number];
 type DemoMember = Member & { householdId?: string };
-type AccountRecord = DemoMember & { email?: string; phone?: string; birthdate?: string };
+type AccountRecord = DemoMember & {
+  email?: string;
+  phone?: string;
+  birthdate?: string;
+  idType?: string;
+  faceImageLabel?: string;
+  idImageLabel?: string;
+};
 type PendingReceipt = {
   expenseId: number;
   memberId: number;
@@ -229,6 +236,9 @@ type JoinRequest = {
   submittedAt: string;
   faceVerified: boolean;
   idUploaded: boolean;
+  idType?: string;
+  faceImageLabel?: string;
+  idImageLabel?: string;
 };
 
 type HouseholdRecord = {
@@ -243,6 +253,18 @@ type HouseholdRecord = {
 
 const memberEmail = (member: AccountRecord) => member.email ?? `${member.nick.toLowerCase()}@email.com`;
 const isMainTenant = (member: DemoMember) => member.role.includes("Main Tenant");
+const ACCEPTED_ID_TYPES = [
+  "Philippine National ID",
+  "Philippine Passport",
+  "Driver's License",
+  "UMID",
+  "Postal ID",
+  "Voter's ID",
+  "PRC ID",
+  "PhilHealth ID",
+  "SSS ID",
+  "Alien Certificate of Registration",
+];
 const HOUSEHOLD_INVITE_CODE = "HS-SUNRISE-2026";
 const HOUSEHOLD_INVITE_LINK = `https://houseshare.app/join/${HOUSEHOLD_INVITE_CODE}`;
 const SUNRISE_HOUSEHOLD_ID = "sunrise";
@@ -588,10 +610,12 @@ function ScreenPrelude({ label, title, value, icon: Icon }: {
 }
 
 function BillingCycleChart({ compact = false }: { compact?: boolean }) {
-  const currentDay = 29;
-  const billingDays = 30;
-  const percent = Math.round((currentDay / billingDays) * 100);
-  const daysLeft = billingDays - currentDay;
+  const today = new Date();
+  const billingDays = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const currentDay = Math.min(today.getDate(), billingDays);
+  const percent = Math.min(100, Math.round((currentDay / billingDays) * 100));
+  const daysLeft = Math.max(billingDays - currentDay, 0);
+  const monthName = today.toLocaleDateString("en-US", { month: "long" });
 
   return (
     <div
@@ -614,10 +638,10 @@ function BillingCycleChart({ compact = false }: { compact?: boolean }) {
           BILLING CYCLE
         </div>
         <div style={{ fontFamily: "Outfit, sans-serif", fontSize: compact ? 15 : 17, fontWeight: 800, color: C.text, marginTop: 4 }}>
-          September payment window
+          {monthName} payment window
         </div>
         <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-          {daysLeft} day left before next billing cycle
+          {daysLeft === 0 ? "Billing cycle ends today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left before next billing cycle`}
         </div>
       </div>
       <div
@@ -630,7 +654,7 @@ function BillingCycleChart({ compact = false }: { compact?: boolean }) {
           placeItems: "center",
           flexShrink: 0,
         }}
-        aria-label={`${percent}% of the September billing cycle is complete`}
+        aria-label={`${percent}% of the ${monthName} billing cycle is complete`}
       >
         <div style={{ width: compact ? 54 : 64, height: compact ? 54 : 64, borderRadius: "50%", background: C.card, display: "grid", placeItems: "center", boxShadow: "inset 0 0 0 1px rgba(35, 117, 103, 0.08)" }}>
           <span style={{ fontFamily: "Outfit, sans-serif", fontSize: compact ? 17 : 20, fontWeight: 900, color: C.text }}>{percent}%</span>
@@ -1114,7 +1138,7 @@ function LoginScreen({ onNav, currentMember, onLogin, members }: { onNav: (s: Sc
 }
 
 // ── Register Screen ────────────────────────────────────────────────────────
-function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts }: { onNav: (s: Screen) => void; onRegister: (member: AccountRecord, householdValue: string, role: "main" | "tenant", faceVerified: boolean, idUploaded: boolean) => void; nextMemberId: number; inviteCodes: string[]; accounts: AccountRecord[] }) {
+function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts }: { onNav: (s: Screen) => void; onRegister: (member: AccountRecord, householdValue: string, role: "main" | "tenant", faceVerified: boolean, idUploaded: boolean, idType: string) => void; nextMemberId: number; inviteCodes: string[]; accounts: AccountRecord[] }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -1122,11 +1146,13 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
   const [birthdate, setBirthdate] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(true);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<"main" | "tenant">("tenant");
   const [household, setHousehold] = useState("");
   const [faceVerified, setFaceVerified] = useState(false);
   const [idUploaded, setIdUploaded] = useState(false);
+  const [idType, setIdType] = useState(ACCEPTED_ID_TYPES[0]);
   const [inviteError, setInviteError] = useState("");
   const [formError, setFormError] = useState("");
   const tenantInviteValid = role === "tenant" && household ? inviteCodes.some((code) => inviteMatches(household, code)) : false;
@@ -1148,27 +1174,6 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
       style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
     />
   );
-  const PasswordField = () => (
-    <div style={{ position: "relative" }}>
-      <input
-        className="auth-input"
-        type={showConfirmPassword ? "text" : "password"}
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        placeholder="Confirm Password"
-        style={{ width: "100%", padding: "13px 46px 13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
-      />
-      <button
-        type="button"
-        onClick={() => setShowConfirmPassword((visible) => !visible)}
-        aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-        style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted }}
-      >
-        {showConfirmPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-      </button>
-    </div>
-  );
-
   const completeRegistration = () => {
     if (!household || !name || !email) return;
     if (role === "tenant" && !tenantInviteValid) {
@@ -1191,7 +1196,10 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
       email: normalizedEmail,
       phone: normalizedPhone,
       birthdate,
-    }, household, role, faceVerified, idUploaded);
+      idType,
+      faceImageLabel: faceVerified ? `${first.toLowerCase()}_${last.toLowerCase()}_face_capture.jpg` : undefined,
+      idImageLabel: idUploaded ? `${idType.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_upload.jpg` : undefined,
+    }, household, role, faceVerified, idUploaded, idType);
     onNav("dashboard");
   };
   const continuePersonalDetails = () => {
@@ -1233,7 +1241,17 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
         <div className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {inp(name, setName, "Full Name")}
           {inp(email, setEmail, "Email Address", "email")}
-          {inp(birthdate, setBirthdate, "Birthdate", "date")}
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 800, color: C.muted, fontFamily: "Outfit, sans-serif", letterSpacing: 0.35 }}>
+            BIRTHDAY (MONTH / DAY / YEAR)
+            <input
+              className="auth-input"
+              type="date"
+              value={birthdate}
+              onChange={(e) => setBirthdate(e.target.value)}
+              aria-label="Birthday, month day year"
+              style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
+            />
+          </label>
           <input
             className="auth-input"
             type="tel"
@@ -1243,8 +1261,44 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
             maxLength={13}
             style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
           />
-          {inp(password, setPassword, "Password", "password")}
-          <PasswordField />
+          <div style={{ position: "relative" }}>
+            <input
+              className="auth-input"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Create Password"
+              style={{ width: "100%", padding: "13px 46px 13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted }}
+            >
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+          <div style={{ position: "relative" }}>
+            <input
+              className="auth-input"
+              type={showConfirmPassword ? "text" : "password"}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Confirm Password"
+              style={{ width: "100%", padding: "13px 46px 13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setShowConfirmPassword((visible) => !visible)}
+              aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted }}
+            >
+              {showConfirmPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.45 }}>
             Phone format: +63 plus 10 mobile digits. Password minimum: 8 characters.
           </div>
@@ -1299,6 +1353,16 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
           )}
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}>
             <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>Identity Verification</div>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 800, color: C.muted, fontFamily: "Outfit, sans-serif", letterSpacing: 0.35, marginBottom: 10 }}>
+              VALID ID TYPE
+              <select
+                value={idType}
+                onChange={(e) => setIdType(e.target.value)}
+                style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 13, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
+              >
+                {ACCEPTED_ID_TYPES.map((type) => <option key={type}>{type}</option>)}
+              </select>
+            </label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <button className="choice-card" onClick={() => setFaceVerified(true)} style={{ border: `1.5px solid ${faceVerified ? C.paid : C.border}`, background: faceVerified ? C.paidBg : C.card, borderRadius: 12, padding: 12, cursor: "pointer" }}>
                 <Camera size={18} color={faceVerified ? C.paid : C.primary} />
@@ -1309,7 +1373,7 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
                 <div style={{ fontSize: 12, fontWeight: 800, color: C.text, marginTop: 6 }}>{idUploaded ? "ID uploaded" : "Upload ID"}</div>
               </button>
             </div>
-            <p style={{ fontSize: 11, color: C.muted, margin: "10px 0 0" }}>Prototype only: main tenant gets notified and can review identity details.</p>
+            <p style={{ fontSize: 11, color: C.muted, margin: "10px 0 0" }}>Prototype only: main tenant reviews face capture, ID type, and uploaded ID preview before approving a tenant.</p>
           </div>
           <button
             className="primary-action"
@@ -2260,7 +2324,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
 }
 
 // ── Payments Screen ────────────────────────────────────────────────────────
-function PaymentsScreen({ onNav, pendingQueue, pendingExpenses, expensesLive, myPaid, myPending, myUnpaid, onSelectExpense, onPay, currentMember }: {
+function PaymentsScreen({ onNav, pendingQueue, pendingExpenses, expensesLive, myPaid, myPending, myUnpaid, onSelectExpense, onPay, currentMember, reviewerName }: {
   onNav: (s: Screen) => void;
   pendingQueue: number[];
   pendingExpenses: Array<typeof EXPENSES[number] & { submittedBy?: number; submittedAt?: string; paymentMethod?: string }>;
@@ -2271,6 +2335,7 @@ function PaymentsScreen({ onNav, pendingQueue, pendingExpenses, expensesLive, my
   onSelectExpense: (id: number, dest?: Screen) => void;
   onPay: (id: number) => void;
   currentMember: Member;
+  reviewerName: string;
 }) {
   // Payment history = expenses where Alex has submitted proof or paid
   const history = expensesLive.filter((e) =>
@@ -2346,7 +2411,7 @@ function PaymentsScreen({ onNav, pendingQueue, pendingExpenses, expensesLive, my
               <Clock size={18} color={C.pending} />
               <div>
                 <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 13, fontWeight: 700, color: C.pending }}>
-                  {pendingQueue.length} Payment{pendingQueue.length > 1 ? "s" : ""} Awaiting Jamie's Review
+                  {pendingQueue.length} Payment{pendingQueue.length > 1 ? "s" : ""} Awaiting {reviewerName}'s Review
                 </div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                   {pendingExpenses.map((e) => e.name).join(", ")} is pending main tenant approval
@@ -2429,13 +2494,14 @@ const BANK_METHODS = [
   { id: "GoTyme", label: "GoTyme Bank", logoUrl: gotymeLogo, fallback: "GT", bg: "#00D1C1", text: "#061C24" },
 ];
 
-function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSource, mode = "payment" }: {
+function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSource, mode = "payment", reviewerName = "the main tenant" }: {
   onNav: (s: Screen) => void;
   expense: typeof EXPENSES[0];
   onSubmit: (method: string) => void;
   linkedSources: LinkedFundingSource[];
   onLinkSource: (source: LinkedFundingSource) => void;
   mode?: "payment" | "link-only";
+  reviewerName?: string;
 }) {
   const [method, setMethod] = useState("GCash");
   const [proofPreview, setProofPreview] = useState(false);
@@ -2922,7 +2988,7 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
         {!linkOnly && <p style={{ textAlign: "center", fontSize: 12, color: C.muted }}>
           {isBank && selectedLinkedSource
             ? `Payment source selected: ${selectedLinkedSource.label} ending ${selectedLinkedSource.last4}.`
-            : "Your payment will be reviewed by Jamie, the main tenant."}
+            : `Your payment will be reviewed by ${reviewerName}, the main tenant.`}
         </p>}
       </div>
 
@@ -3034,25 +3100,25 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
 }
 
 // ── Payment Submitted ──────────────────────────────────────────────────────
-function PaymentSubmittedScreen({ onNav, expense, currentMember }: { onNav: (s: Screen) => void; expense: typeof EXPENSES[0]; currentMember: Member }) {
+function PaymentSubmittedScreen({ onNav, expense, currentMember, reviewerName }: { onNav: (s: Screen) => void; expense: typeof EXPENSES[0]; currentMember: Member; reviewerName: string }) {
   const manager = isMainTenant(currentMember);
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
-      <div style={{ width: 80, height: 80, borderRadius: "50%", background: C.pendingBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
-        <Clock size={36} color={C.pending} strokeWidth={1.5} />
+      <div style={{ width: 80, height: 80, borderRadius: "50%", background: manager ? C.paidBg : C.pendingBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+        {manager ? <CheckCircle2 size={36} color={C.paid} strokeWidth={1.5} /> : <Clock size={36} color={C.pending} strokeWidth={1.5} />}
       </div>
       <h2 style={{ fontFamily: "Outfit, sans-serif", fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>
-        Payment Proof Submitted
+        {manager ? "Payment Recorded" : "Payment Proof Submitted"}
       </h2>
-      <StatusBadge status="Pending Verification" />
+      <StatusBadge status={manager ? "Paid" : "Pending Verification"} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "20px", marginTop: 24, width: "100%", maxWidth: 320, textAlign: "left" }}>
         {[
           { label: "Amount", value: peso(expense.myShare) },
           { label: "Expense", value: expense.name },
           { label: "Date Submitted", value: "September 9, 2026" },
           { label: "Payment Method", value: "GCash" },
-          { label: "Status", value: "Awaiting verification" },
+          { label: "Status", value: manager ? "Paid by main tenant" : "Awaiting verification" },
         ].map((r) => (
           <div
             key={r.label}
@@ -3070,30 +3136,9 @@ function PaymentSubmittedScreen({ onNav, expense, currentMember }: { onNav: (s: 
       </div>
       <p style={{ color: C.muted, fontSize: 13, marginTop: 16, maxWidth: 280 }}>
         {manager
-          ? "This receipt is ready for main tenant verification."
-          : "Jamie will verify your payment. You'll receive a notification once it's confirmed."}
+          ? "Main tenant payments are recorded immediately and do not appear in the review queue."
+          : `${reviewerName} will verify your payment. You'll receive a notification once it's confirmed.`}
       </p>
-      {manager && (
-        <button
-          onClick={() => onNav("verify-payments")}
-          style={{
-            background: C.pendingBg,
-            color: C.pending,
-            border: `1.5px solid ${C.pending}40`,
-            borderRadius: 14,
-            padding: "14px 32px",
-            fontSize: 14,
-            fontWeight: 700,
-            fontFamily: "Outfit, sans-serif",
-            cursor: "pointer",
-            marginTop: 10,
-            width: "100%",
-            maxWidth: 320,
-          }}
-        >
-          Open Verification View
-        </button>
-      )}
       <button
         onClick={() => onNav("dashboard")}
         style={{
@@ -3526,6 +3571,7 @@ function MemberDetailScreen({ onNav, memberId, members, household, expensesLive,
 
 // ── Notifications Screen ───────────────────────────────────────────────────
 function NotificationsScreen({ onNav, notifications, currentMember, household, accounts, joinRequests, onAcceptJoin, onRejectJoin }: { onNav: (s: Screen) => void; notifications: AppNotification[]; currentMember: DemoMember; household: HouseholdRecord; accounts: AccountRecord[]; joinRequests: JoinRequest[]; onAcceptJoin: (requestId: number) => void; onRejectJoin: (requestId: number) => void }) {
+  const [expandedRequestId, setExpandedRequestId] = useState<number | null>(null);
   const visibleNotifications = notifications.filter((n) => n.memberId === undefined || n.memberId === "all" || n.memberId === currentMember.id);
   const today = visibleNotifications.filter((n) => n.today);
   const earlier = visibleNotifications.filter((n) => !n.today);
@@ -3588,6 +3634,37 @@ function NotificationsScreen({ onNav, notifications, currentMember, household, a
                     <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
                       Wants to join {household.name}. Face check: {request.faceVerified ? "captured" : "missing"} · ID: {request.idUploaded ? "uploaded" : "missing"}.
                     </div>
+                    <button
+                      onClick={() => setExpandedRequestId((id) => id === request.id ? null : request.id)}
+                      style={{ width: "100%", border: `1px solid ${C.border}`, background: C.card, color: C.primary, borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 900, cursor: "pointer", marginBottom: 10, fontFamily: "Outfit, sans-serif" }}
+                    >
+                      {expandedRequestId === request.id ? "Hide Identity Details" : "Review Face & ID Details"}
+                    </button>
+                    {expandedRequestId === request.id && (
+                      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "82px 1fr", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                          <div style={{ width: 82, height: 82, borderRadius: 18, background: `linear-gradient(135deg, ${newbie.color}, ${C.accent})`, display: "grid", placeItems: "center", color: "#fff", fontFamily: "Outfit, sans-serif", fontSize: 24, fontWeight: 900, boxShadow: C.shadow }}>
+                            {newbie.avatar}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 900, color: C.primary, fontFamily: "Outfit, sans-serif", letterSpacing: 0.35 }}>FACE CAPTURE PREVIEW</div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 3 }}>{request.faceImageLabel ?? newbie.faceImageLabel ?? "No face image captured"}</div>
+                            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{request.faceVerified ? "Prototype face verification captured." : "Face verification is missing."}</div>
+                          </div>
+                        </div>
+                        <div style={{ border: `1px dashed ${request.idUploaded ? C.primary : C.unpaid}`, borderRadius: 12, padding: 12, background: request.idUploaded ? C.primaryLight : C.unpaidBg }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <IdCard size={17} color={request.idUploaded ? C.primary : C.unpaid} />
+                            <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 13, fontWeight: 900, color: C.text }}>{request.idType ?? newbie.idType ?? "Valid ID not selected"}</div>
+                          </div>
+                          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+                            Uploaded file: {request.idImageLabel ?? newbie.idImageLabel ?? "No ID file uploaded"}<br />
+                            Registered name: {newbie.name}<br />
+                            Birthday on record: {newbie.birthdate || "Not provided"}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 8 }}>
                       <button onClick={() => onAcceptJoin(request.id)} style={{ flex: 1, border: `1.5px solid ${C.paid}`, background: C.paidBg, color: C.paid, borderRadius: 12, padding: "11px 0", fontWeight: 900, cursor: "pointer" }}>Accept</button>
                       <button onClick={() => onRejectJoin(request.id)} style={{ flex: 1, border: `1.5px solid ${C.unpaid}`, background: C.unpaidBg, color: C.unpaid, borderRadius: 12, padding: "11px 0", fontWeight: 900, cursor: "pointer" }}>Reject</button>
@@ -4666,6 +4743,7 @@ export default function App() {
   const currentMember = members.find((m) => m.id === currentMemberId) ?? members[0];
   const currentHouseholdId = memberHouseholdId(currentMember);
   const currentHousehold = households[currentHouseholdId] ?? DEFAULT_HOUSEHOLDS[SUNRISE_HOUSEHOLD_ID];
+  const reviewerName = members.find((member) => member.id === currentHousehold.mainTenantId)?.nick ?? "the main tenant";
   const manager = currentHousehold.mainTenantId === currentMember.id;
   const approvedMembers = members.filter((member) => memberHouseholdId(member) === currentHousehold.id && approvedMemberIds.includes(member.id));
   const splitCount = Math.max(approvedMembers.length, 1);
@@ -4681,6 +4759,12 @@ export default function App() {
   }));
   const selectedExpense = expensesLive.find((e) => e.id === selectedExpenseId) ?? expensesLive[0] ?? EXPENSES[0];
   const managerPendingExpenses = pendingReceipts
+    .filter((receipt) => {
+      const submitter = members.find((member) => member.id === receipt.memberId);
+      return Boolean(submitter)
+        && memberHouseholdId(submitter!) === currentHousehold.id
+        && receipt.memberId !== currentHousehold.mainTenantId;
+    })
     .map((receipt) => {
       const expense = householdExpensesBase.find((e) => e.id === receipt.expenseId);
       return expense
@@ -4710,9 +4794,31 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const submitPayment = (expenseId: number, paymentMethod = "GCash") => {
+    const expenseName = householdExpensesBase.find((e) => e.id === expenseId)?.name ?? "an expense";
+    const submittedByMainTenant = currentHousehold.mainTenantId === currentMember.id;
+    if (submittedByMainTenant) {
+      setMemberStatuses((prev) => ({
+        ...prev,
+        [currentMember.id]: { ...(prev[currentMember.id] ?? {}), [expenseId]: "Paid" },
+      }));
+      setPendingReceipts((prev) => prev.filter((receipt) => !(receipt.expenseId === expenseId && receipt.memberId === currentMember.id)));
+      setNotifications((prev) => [
+        {
+          id: Date.now(),
+          text: `${currentMember.nick} recorded payment for ${expenseName}. Main tenant payments do not need review.`,
+          time: "Just now",
+          Icon: CheckCircle2,
+          today: true,
+          memberId: currentMember.id,
+        },
+        ...prev,
+      ]);
+      return;
+    }
+
     setMemberStatuses((prev) => ({
       ...prev,
-      [currentMember.id]: { ...prev[currentMember.id], [expenseId]: "Pending Verification" },
+      [currentMember.id]: { ...(prev[currentMember.id] ?? {}), [expenseId]: "Pending Verification" },
     }));
     setPendingReceipts((prev) =>
       prev.some((receipt) => receipt.expenseId === expenseId && receipt.memberId === currentMember.id)
@@ -4722,7 +4828,7 @@ export default function App() {
     setNotifications((prev) => [
       {
         id: Date.now(),
-        text: `${currentMember.nick} submitted proof for ${EXPENSES.find((e) => e.id === expenseId)?.name ?? "an expense"}.`,
+        text: `${currentMember.nick} submitted proof for ${expenseName}.`,
         time: "Just now",
         Icon: Upload,
         today: true,
@@ -4857,7 +4963,7 @@ export default function App() {
     window.location.hash = "welcome";
   };
 
-  const registerMember = (member: AccountRecord, householdValue: string, role: "main" | "tenant", faceVerified: boolean, idUploaded: boolean) => {
+  const registerMember = (member: AccountRecord, householdValue: string, role: "main" | "tenant", faceVerified: boolean, idUploaded: boolean, idType: string) => {
     const matchedHousehold = Object.values(households).find((household) => inviteMatches(householdValue, household.inviteCode));
     if (role === "tenant" && !matchedHousehold) return;
     const createdHouseholdId = `household-${member.id}`;
@@ -4887,7 +4993,19 @@ export default function App() {
     setCurrentMemberId(member.id);
 
     if (role === "tenant" && matchedHousehold) {
-      setJoinRequests((prev) => [...prev, { id: Date.now(), memberId: member.id, householdId: matchedHousehold.id, inviteCode: matchedHousehold.inviteCode, status: "Pending", submittedAt: "Just now", faceVerified, idUploaded }]);
+      setJoinRequests((prev) => [...prev, {
+        id: Date.now(),
+        memberId: member.id,
+        householdId: matchedHousehold.id,
+        inviteCode: matchedHousehold.inviteCode,
+        status: "Pending",
+        submittedAt: "Just now",
+        faceVerified,
+        idUploaded,
+        idType,
+        faceImageLabel: member.faceImageLabel,
+        idImageLabel: member.idImageLabel,
+      }]);
     }
 
     setNotifications((prev) => [
@@ -4909,10 +5027,41 @@ export default function App() {
   const acceptJoinRequest = (requestId: number) => {
     const request = joinRequests.find((item) => item.id === requestId);
     if (!request) return;
+    const household = households[request.householdId] ?? currentHousehold;
+    const householdMembersAfterApproval = members.filter((member) =>
+      memberHouseholdId(member) === request.householdId
+      && (approvedMemberIds.includes(member.id) || member.id === request.memberId)
+    );
+    const householdMemberIds = householdMembersAfterApproval.map((member) => member.id);
+    const householdExpensesForApproval = [
+      ...EXPENSES.filter((expense) => household.expenseIds.includes(expense.id)),
+      ...(customExpenses[household.id] ?? []),
+    ];
+    const recalculatedShares = householdExpensesForApproval.reduce<Record<number, Record<number, number>>>((acc, expense) => {
+      const share = Math.round((expense.total / Math.max(householdMemberIds.length, 1)) * 100) / 100;
+      acc[expense.id] = householdMemberIds.reduce<Record<number, number>>((memberAcc, memberId) => {
+        memberAcc[memberId] = share;
+        return memberAcc;
+      }, {});
+      return acc;
+    }, {});
+
     setJoinRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, status: "Accepted" } : item));
     setApprovedMemberIds((prev) => prev.includes(request.memberId) ? prev : [...prev, request.memberId]);
+    setExpenseShares((prev) => ({ ...prev, ...recalculatedShares }));
+    setMemberStatuses((prev) => {
+      const next = { ...prev };
+      householdMemberIds.forEach((memberId) => {
+        const current = next[memberId] ?? {};
+        const nextMemberStatuses = { ...current };
+        householdExpensesForApproval.forEach((expense) => {
+          nextMemberStatuses[expense.id] = current[expense.id] ?? "Unpaid";
+        });
+        next[memberId] = nextMemberStatuses;
+      });
+      return next;
+    });
     const newbie = members.find((member) => member.id === request.memberId);
-    const household = households[request.householdId] ?? currentHousehold;
     const approver = members.find((member) => member.id === household.mainTenantId);
     setNotifications((prev) => [
       { id: Date.now(), text: `${approver?.nick ?? "Main tenant"} accepted ${newbie?.name ?? "the new tenant"} into ${household.name}. Shares have been recalculated.`, time: "Just now", Icon: CheckCircle2, today: true, memberId: "all" },
@@ -4977,6 +5126,7 @@ export default function App() {
               onSelectExpense={navToExpense}
               onPay={navToPayment}
               currentMember={currentMember}
+              reviewerName={reviewerName}
             />
           )}
           {screen === "household" && (
@@ -5045,6 +5195,7 @@ export default function App() {
           onSelectExpense={navToExpense}
           onPay={navToPayment}
           currentMember={currentMember}
+          reviewerName={reviewerName}
         />
       );
     case "make-payment":
@@ -5055,6 +5206,7 @@ export default function App() {
           linkedSources={linkedSources}
           onLinkSource={(source) => setLinkedSources((prev) => [source, ...prev])}
           onSubmit={(paymentMethod) => { submitPayment(selectedExpense.id, paymentMethod); setScreen("payment-submitted"); }}
+          reviewerName={reviewerName}
         />
       );
     case "link-account":
@@ -5066,10 +5218,11 @@ export default function App() {
           onLinkSource={(source) => setLinkedSources((prev) => [source, ...prev])}
           onSubmit={() => setScreen("profile")}
           mode="link-only"
+          reviewerName={reviewerName}
         />
       );
     case "payment-submitted":
-      return <PaymentSubmittedScreen onNav={setScreen} expense={selectedExpense} currentMember={currentMember} />;
+      return <PaymentSubmittedScreen onNav={setScreen} expense={selectedExpense} currentMember={currentMember} reviewerName={reviewerName} />;
     case "verify-payments":
       return (
         <VerifyPaymentsScreen
