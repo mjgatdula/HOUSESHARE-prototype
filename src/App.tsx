@@ -60,7 +60,7 @@ function CashLogo({ size = 40 }: { size?: number }) {
 }
 
 const getExpenseShare = (expense: ExpenseRecord, memberId: number, shareMap?: Record<number, number>) =>
-  Math.round(((shareMap?.[memberId] ?? expense.myShare) * 100)) / 100;
+  Math.round(((shareMap?.[memberId] ?? expense.myShare ?? 0) * 100)) / 100;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Screen =
@@ -153,8 +153,9 @@ const STATUS_MAP: Record<StatusKey, { bg: string; color: string; dot: string; Ic
   Rejected: { bg: C.rejectedBg, color: C.rejected, dot: "#6B6B6B", Icon: XCircle },
 };
 
-function StatusBadge({ status }: { status: StatusKey }) {
-  const s = STATUS_MAP[status];
+function StatusBadge({ status }: { status?: StatusKey }) {
+  const safeStatus = status && STATUS_MAP[status] ? status : "Unpaid";
+  const s = STATUS_MAP[safeStatus];
   const Icon = s.Icon;
   return (
     <span
@@ -174,7 +175,7 @@ function StatusBadge({ status }: { status: StatusKey }) {
       }}
     >
       <Icon size={11} strokeWidth={2.3} />
-      {status}
+      {safeStatus}
     </span>
   );
 }
@@ -1698,21 +1699,21 @@ function ExpensesScreen({ onNav, expensesLive, onSelectExpense, currentMember }:
 }
 
 // ── Expense Detail ─────────────────────────────────────────────────────────
-function ExpenseDetailScreen({ onNav, expense, onPay, currentMember, members, memberStatuses, expenseShares }: {
+function ExpenseDetailScreen({ onNav, expense, onPay, currentMember, members, memberStatuses = {}, expenseShares = {} }: {
   onNav: (s: Screen) => void;
   expense: typeof EXPENSES[0];
   onPay: () => void;
   currentMember: DemoMember;
   members: DemoMember[];
-  memberStatuses: Record<number, Record<number, StatusKey>>;
-  expenseShares: Record<number, Record<number, number>>;
+  memberStatuses?: Record<number, Record<number, StatusKey>>;
+  expenseShares?: Record<number, Record<number, number>>;
 }) {
   const [showCalc, setShowCalc] = useState(false);
   const exp = expense;
 
   const memberShares = members.map((member) => ({
     member,
-    status: memberStatuses[member.id]?.[exp.id] ?? "Unpaid" as StatusKey,
+    status: memberStatuses?.[member.id]?.[exp.id] ?? "Unpaid" as StatusKey,
     share: getExpenseShare(exp, member.id, expenseShares[exp.id]),
   }));
 
@@ -1901,9 +1902,11 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
   const displayDue = dueDate
     ? new Date(`${dueDate}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : "Set due date";
+  const hasAwayDays = Object.values(awayDays).some((days) => days.length > 0);
+  const effectiveMethod = hasAwayDays ? "Occupancy-Based" : method;
   const equalShare = members.length > 0 ? parsedAmount / members.length : parsedAmount;
   const computedShares = members.reduce<Record<number, number>>((acc, member) => {
-    if (method !== "Occupancy-Based") {
+    if (effectiveMethod !== "Occupancy-Based") {
       acc[member.id] = Math.round(equalShare * 100) / 100;
       return acc;
     }
@@ -2077,7 +2080,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
         {step === 3 && (
           <div>
             <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>
-              Mark days when each member was away. This data is only used for Occupancy-Based expenses.
+              Mark days when each member was away. Selecting any away day automatically uses Occupancy-Based calculation.
             </p>
             {members.length === 0 ? (
               <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 18, color: C.muted, fontSize: 13 }}>
@@ -2158,7 +2161,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
                 { label: "Expense Name", value: name || "September Electricity" },
                 { label: "Category", value: category },
                 { label: "Total Amount", value: peso(parsedAmount) },
-                { label: "Sharing Method", value: method },
+                { label: "Sharing Method", value: effectiveMethod },
                 { label: "Due Date", value: displayDue },
                 { label: "Members", value: members.map((m) => m.nick).join(", ") || currentMember.nick },
               ].map((r) => (
@@ -2227,7 +2230,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
                 category,
                 total: parsedAmount,
                 due: displayDue,
-                method,
+                method: effectiveMethod,
                 Icon: expenseIcon,
                 shares: computedShares,
               });
@@ -3248,15 +3251,20 @@ function VerifyPaymentsScreen({ onNav, pendingExpenses, onAccept, onReject, curr
 }
 
 // ── Household Screen ───────────────────────────────────────────────────────
-function HouseholdScreen({ onNav, onSelectMember, currentMember, members, accounts, household, expensesLive, joinRequests, onAcceptJoin, onRejectJoin }: { onNav: (s: Screen) => void; onSelectMember: (id: number) => void; currentMember: DemoMember; members: DemoMember[]; accounts: DemoMember[]; household: HouseholdRecord; expensesLive: typeof EXPENSES; joinRequests: JoinRequest[]; onAcceptJoin: (requestId: number) => void; onRejectJoin: (requestId: number) => void }) {
-  // Current demo user's owed = expenses not yet Paid
-  const currentUserOwed = expensesLive
-    .filter((e) => e.status === "Unpaid" || e.status === "Overdue")
-    .reduce((s, e) => s + e.myShare, 0);
+function HouseholdScreen({ onNav, onSelectMember, currentMember, members, accounts, household, expensesLive, expenseShares = {}, memberStatuses = {}, joinRequests, onAcceptJoin, onRejectJoin }: { onNav: (s: Screen) => void; onSelectMember: (id: number) => void; currentMember: DemoMember; members: DemoMember[]; accounts: DemoMember[]; household: HouseholdRecord; expensesLive: typeof EXPENSES; expenseShares?: Record<number, Record<number, number>>; memberStatuses?: Record<number, Record<number, StatusKey>>; joinRequests: JoinRequest[]; onAcceptJoin: (requestId: number) => void; onRejectJoin: (requestId: number) => void }) {
   const manager = household.mainTenantId === currentMember.id;
   const pendingRequests = joinRequests.filter((request) => request.householdId === household.id && request.status === "Pending");
   const totalExpenses = expensesLive.reduce((sum, expense) => sum + expense.total, 0);
-  const collected = members.reduce((sum, member) => sum + member.paid, 0);
+  const memberShare = (memberId: number, expense: typeof EXPENSES[number]) => getExpenseShare(expense, memberId, expenseShares[expense.id]);
+  const memberOwed = (memberId: number) =>
+    expensesLive
+      .filter((expense) => (memberStatuses?.[memberId]?.[expense.id] ?? expense.status ?? "Unpaid") !== "Paid")
+      .reduce((sum, expense) => sum + memberShare(memberId, expense), 0);
+  const collected = members.reduce((sum, member) => (
+    sum + expensesLive
+      .filter((expense) => (memberStatuses?.[member.id]?.[expense.id] ?? expense.status ?? "Unpaid") === "Paid")
+      .reduce((paidSum, expense) => paidSum + memberShare(member.id, expense), 0)
+  ), 0);
   const outstanding = Math.max(totalExpenses - collected, 0);
   return (
     <MobileShell activeNav="household" onNav={onNav} title="Household">
@@ -3380,7 +3388,7 @@ function HouseholdScreen({ onNav, onSelectMember, currentMember, members, accoun
               </div>
               <div style={{ textAlign: "right" }}>
                 {(() => {
-                  const owed = m.id === currentMember.id ? currentUserOwed : m.owed;
+                  const owed = memberOwed(m.id);
                   return owed > 0 ? (
                     <div>
                       <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 13, fontWeight: 700, color: C.unpaid }}>Owes {peso(owed)}</div>
@@ -3429,7 +3437,7 @@ const MEMBER_EXPENSE_STATUSES: Record<number, Record<number, StatusKey>> = {
   4: { 1: "Unpaid", 2: "Unpaid", 3: "Unpaid",               4: "Paid", 5: "Unpaid" }, // Taylor
 };
 
-function MemberDetailScreen({ onNav, memberId, members, household, expensesLive, memberStatuses, expenseShares }: { onNav: (s: Screen) => void; memberId: number; members: DemoMember[]; household: HouseholdRecord; expensesLive: typeof EXPENSES; memberStatuses: Record<number, Record<number, StatusKey>>; expenseShares: Record<number, Record<number, number>> }) {
+function MemberDetailScreen({ onNav, memberId, members, household, expensesLive, memberStatuses = {}, expenseShares = {} }: { onNav: (s: Screen) => void; memberId: number; members: DemoMember[]; household: HouseholdRecord; expensesLive: typeof EXPENSES; memberStatuses?: Record<number, Record<number, StatusKey>>; expenseShares?: Record<number, Record<number, number>> }) {
   const m = members.find((mb) => mb.id === memberId) ?? members[0];
   if (!m) {
     return (
@@ -3442,6 +3450,12 @@ function MemberDetailScreen({ onNav, memberId, members, household, expensesLive,
       </MobileShell>
     );
   }
+  const dynamicPaid = expensesLive
+    .filter((exp) => (memberStatuses?.[m.id]?.[exp.id] ?? exp.status ?? "Unpaid") === "Paid")
+    .reduce((sum, exp) => sum + getExpenseShare(exp, m.id, expenseShares[exp.id]), 0);
+  const dynamicOwed = expensesLive
+    .filter((exp) => (memberStatuses?.[m.id]?.[exp.id] ?? exp.status ?? "Unpaid") !== "Paid")
+    .reduce((sum, exp) => sum + getExpenseShare(exp, m.id, expenseShares[exp.id]), 0);
   return (
     <MobileShell
       activeNav="household"
@@ -3460,8 +3474,8 @@ function MemberDetailScreen({ onNav, memberId, members, household, expensesLive,
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
           {[
-            { label: "Total Paid", value: peso(m.paid), color: C.paid, bg: C.paidBg },
-            { label: "Currently Owes", value: peso(m.owed), color: m.owed > 0 ? C.unpaid : C.paid, bg: m.owed > 0 ? C.unpaidBg : C.paidBg },
+            { label: "Total Paid", value: peso(dynamicPaid), color: C.paid, bg: C.paidBg },
+            { label: "Currently Owes", value: peso(dynamicOwed), color: dynamicOwed > 0 ? C.unpaid : C.paid, bg: dynamicOwed > 0 ? C.unpaidBg : C.paidBg },
           ].map((s) => (
             <div className="metric-card" key={s.label} style={{ background: s.bg, borderRadius: 12, padding: "14px" }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: s.color, fontFamily: "Outfit, sans-serif" }}>
@@ -3481,7 +3495,7 @@ function MemberDetailScreen({ onNav, memberId, members, household, expensesLive,
           {expensesLive.length === 0 ? (
             <div style={{ padding: "16px", color: C.muted, fontSize: 13 }}>No assigned expenses yet.</div>
           ) : expensesLive.map((exp, i) => {
-            const memberStatus = (memberStatuses[m.id] ?? {})[exp.id] ?? "Unpaid";
+            const memberStatus = memberStatuses?.[m.id]?.[exp.id] ?? "Unpaid";
             return (
               <div
                 key={exp.id}
@@ -3645,7 +3659,7 @@ function NotificationsScreen({ onNav, notifications, currentMember, household, a
 }
 
 // ── Reports Screen ─────────────────────────────────────────────────────────
-function ReportsScreen({ onNav, household, expensesLive, members, memberStatuses, expenseShares }: { onNav: (s: Screen) => void; household: HouseholdRecord; expensesLive: typeof EXPENSES; members: DemoMember[]; memberStatuses: Record<number, Record<number, StatusKey>>; expenseShares: Record<number, Record<number, number>> }) {
+function ReportsScreen({ onNav, household, expensesLive, members, memberStatuses = {}, expenseShares = {} }: { onNav: (s: Screen) => void; household: HouseholdRecord; expensesLive: typeof EXPENSES; members: DemoMember[]; memberStatuses?: Record<number, Record<number, StatusKey>>; expenseShares?: Record<number, Record<number, number>> }) {
   const total = expensesLive.reduce((sum, expense) => sum + expense.total, 0);
   const categoryTotals = expensesLive.reduce<Record<string, number>>((acc, expense) => {
     acc[expense.category] = (acc[expense.category] ?? 0) + expense.total;
@@ -3660,7 +3674,7 @@ function ReportsScreen({ onNav, household, expensesLive, members, memberStatuses
   }));
   const memberRows = members.map((member) => {
     const paid = expensesLive
-      .filter((expense) => memberStatuses[member.id]?.[expense.id] === "Paid")
+      .filter((expense) => (memberStatuses?.[member.id]?.[expense.id] ?? expense.status ?? "Unpaid") === "Paid")
       .reduce((sum, expense) => sum + getExpenseShare(expense, member.id, expenseShares[expense.id]), 0);
     const assigned = expensesLive.reduce((sum, expense) => sum + getExpenseShare(expense, member.id, expenseShares[expense.id]), 0);
     return { ...member, paid, assigned };
@@ -4361,19 +4375,25 @@ function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, on
 }
 
 // ── Desktop Dashboard (wide layout) ────────────────────────────────────────
-function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, pendingQueue, onSelectExpense, currentMember, household, members, onSelectMember, onLogout }: {
+function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, pendingQueue, onSelectExpense, currentMember, household, members, expenseShares = {}, memberStatuses = {}, onSelectMember, onLogout }: {
   screen: Screen; onNav: (s: Screen) => void;
   expensesLive: typeof EXPENSES; myUnpaid: number; unpaidCount: number;
   pendingQueue: number[]; onSelectExpense: (id: number, dest?: Screen) => void;
   currentMember: DemoMember;
   household: HouseholdRecord;
   members: DemoMember[];
+  expenseShares?: Record<number, Record<number, number>>;
+  memberStatuses?: Record<number, Record<number, StatusKey>>;
   onSelectMember: (id: number) => void;
   onLogout: () => void;
 }) {
   const manager = household.mainTenantId === currentMember.id;
   const paidTotal = expensesLive.filter((e) => e.status === "Paid").reduce((sum, e) => sum + e.myShare, 0);
   const pendingTotal = expensesLive.filter((e) => e.status === "Pending Verification").reduce((sum, e) => sum + e.myShare, 0);
+  const memberOwed = (memberId: number) =>
+    expensesLive
+      .filter((expense) => (memberStatuses?.[memberId]?.[expense.id] ?? expense.status ?? "Unpaid") !== "Paid")
+      .reduce((sum, expense) => sum + getExpenseShare(expense, memberId, expenseShares[expense.id]), 0);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: C.bg }}>
@@ -4537,8 +4557,8 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
                       <div style={{ fontSize: 11, color: C.muted }}>{m.role}</div>
                     </div>
                   </div>
-                  {m.owed > 0 ? (
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.unpaid }}>{peso(m.owed)} owed</span>
+                  {memberOwed(m.id) > 0 ? (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.unpaid }}>{peso(memberOwed(m.id))} owed</span>
                   ) : (
                     <StatusBadge status="Paid" />
                   )}
@@ -4654,7 +4674,11 @@ export default function App() {
     ...EXPENSES.filter((expense) => currentHousehold.expenseIds.includes(expense.id)),
     ...(customExpenses[currentHousehold.id] ?? []),
   ];
-  const expensesLive = householdExpensesBase.map((e) => ({ ...e, myShare: getExpenseShare(e, currentMember.id, expenseShares[e.id]) || Math.round((e.total / splitCount) * 100) / 100, status: currentStatuses[e.id] ?? statuses[e.id] }));
+  const expensesLive = householdExpensesBase.map((e) => ({
+    ...e,
+    myShare: expenseShares[e.id]?.[currentMember.id] ?? Math.round((e.total / splitCount) * 100) / 100,
+    status: currentStatuses[e.id] ?? statuses[e.id],
+  }));
   const selectedExpense = expensesLive.find((e) => e.id === selectedExpenseId) ?? expensesLive[0] ?? EXPENSES[0];
   const managerPendingExpenses = pendingReceipts
     .map((receipt) => {
@@ -4928,6 +4952,8 @@ export default function App() {
           currentMember={currentMember}
           household={currentHousehold}
           members={approvedMembers}
+          expenseShares={expenseShares}
+          memberStatuses={memberStatuses}
           onSelectMember={(id) => { setSelectedMemberId(id); setScreen("member-detail"); }}
           onLogout={logout}
         />
@@ -4954,7 +4980,7 @@ export default function App() {
             />
           )}
           {screen === "household" && (
-            <HouseholdScreen {...sharedNav} currentMember={currentMember} members={approvedMembers} accounts={members} household={currentHousehold} expensesLive={expensesLive} joinRequests={joinRequests} onAcceptJoin={acceptJoinRequest} onRejectJoin={rejectJoinRequest} onSelectMember={(id) => { setSelectedMemberId(id); setScreen("member-detail"); }} />
+            <HouseholdScreen {...sharedNav} currentMember={currentMember} members={approvedMembers} accounts={members} household={currentHousehold} expensesLive={expensesLive} expenseShares={expenseShares} memberStatuses={memberStatuses} joinRequests={joinRequests} onAcceptJoin={acceptJoinRequest} onRejectJoin={rejectJoinRequest} onSelectMember={(id) => { setSelectedMemberId(id); setScreen("member-detail"); }} />
           )}
           {screen === "member-detail" && <MemberDetailScreen {...sharedNav} memberId={selectedMemberId} members={approvedMembers} household={currentHousehold} expensesLive={expensesLive} memberStatuses={memberStatuses} expenseShares={expenseShares} />}
           {screen === "reports" && <ReportsScreen {...sharedNav} household={currentHousehold} expensesLive={expensesLive} members={approvedMembers} memberStatuses={memberStatuses} expenseShares={expenseShares} />}
@@ -5056,7 +5082,7 @@ export default function App() {
         />
       );
     case "household":
-      return <HouseholdScreen onNav={setScreen} currentMember={currentMember} members={approvedMembers} accounts={members} household={currentHousehold} expensesLive={expensesLive} joinRequests={joinRequests} onAcceptJoin={acceptJoinRequest} onRejectJoin={rejectJoinRequest} onSelectMember={(id) => { setSelectedMemberId(id); setScreen("member-detail"); }} />;
+      return <HouseholdScreen onNav={setScreen} currentMember={currentMember} members={approvedMembers} accounts={members} household={currentHousehold} expensesLive={expensesLive} expenseShares={expenseShares} memberStatuses={memberStatuses} joinRequests={joinRequests} onAcceptJoin={acceptJoinRequest} onRejectJoin={rejectJoinRequest} onSelectMember={(id) => { setSelectedMemberId(id); setScreen("member-detail"); }} />;
     case "member-detail":
       return <MemberDetailScreen onNav={setScreen} memberId={selectedMemberId} members={approvedMembers} household={currentHousehold} expensesLive={expensesLive} memberStatuses={memberStatuses} expenseShares={expenseShares} />;
     case "notifications":
