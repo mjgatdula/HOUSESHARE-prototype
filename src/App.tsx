@@ -89,8 +89,8 @@ type Screen =
 
 // ── Color tokens ───────────────────────────────────────────────────────────
 const C = {
-  bg: "#F3F7F1",
-  card: "#FFFFFB",
+  bg: "#F4F7F8",
+  card: "#FFFFFF",
   primary: "#28786B",
   primaryDeep: "#123C36",
   primaryLight: "#E4F2EC",
@@ -98,7 +98,7 @@ const C = {
   accentLight: "#FFF0E4",
   text: "#17231F",
   muted: "#64746D",
-  border: "#DCE7DE",
+  border: "#DDE7E5",
   paid: "#257A54",
   paidBg: "#E4F3EA",
   pending: "#B36A1C",
@@ -111,14 +111,14 @@ const C = {
   rejectedBg: "#EEF1EE",
   sidebar: "#10251F",
   sidebarText: "#F8FFF9",
-  shadow: "0 14px 34px rgba(18, 60, 54, 0.10)",
+  shadow: "0 4px 16px rgba(18, 60, 54, 0.04)",
 };
 
 const LIGHT_COLORS = { ...C };
 const DARK_COLORS = {
   ...C,
-  bg: "#0E1613",
-  card: "#15211D",
+  bg: "#071C1B",
+  card: "#102B29",
   primary: "#5CC7B2",
   primaryDeep: "#07110F",
   primaryLight: "#1D3A33",
@@ -127,6 +127,11 @@ const DARK_COLORS = {
   text: "#F3FBF7",
   muted: "#9DB0A8",
   border: "#2A3C35",
+  paid: "#75DCAB",
+  pending: "#F2C66D",
+  unpaid: "#FF9690",
+  overdue: "#F9A1B6",
+  rejected: "#B0C3BD",
   paidBg: "#173529",
   pendingBg: "#3B2C15",
   unpaidBg: "#3B201D",
@@ -155,7 +160,14 @@ const STATUS_MAP: Record<StatusKey, { bg: string; color: string; dot: string; Ic
 
 function StatusBadge({ status }: { status?: StatusKey }) {
   const safeStatus = status && STATUS_MAP[status] ? status : "Unpaid";
-  const s = STATUS_MAP[safeStatus];
+  const palette = {
+    Paid: { bg: C.paidBg, color: C.paid },
+    "Pending Verification": { bg: C.pendingBg, color: C.pending },
+    Unpaid: { bg: C.unpaidBg, color: C.unpaid },
+    Overdue: { bg: C.overdueBg, color: C.overdue },
+    Rejected: { bg: C.rejectedBg, color: C.rejected },
+  };
+  const s = { ...STATUS_MAP[safeStatus], ...palette[safeStatus] };
   const Icon = s.Icon;
   return (
     <span
@@ -200,6 +212,7 @@ type AccountRecord = DemoMember & {
   email?: string;
   phone?: string;
   birthdate?: string;
+  privacyConsent?: { acceptedAt: string; noticeVersion: string; purpose: string };
   idType?: string;
   faceImageLabel?: string;
   idImageLabel?: string;
@@ -753,7 +766,7 @@ const SIDEBAR_ITEMS = [
 
 function DesktopSidebar({ active, onNav, currentMember, onLogout }: { active: string; onNav: (s: Screen) => void; currentMember: Member; onLogout: () => void }) {
   return (
-    <div
+    <div className="desktop-sidebar"
       style={{
         width: 220,
         background: C.sidebar,
@@ -914,11 +927,9 @@ function WelcomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
       <HiggsfieldScene />
 
       <div className="welcome-copy">
-        <div className="welcome-kicker">Built for shared homes</div>
-        <h1>Split bills with cinematic clarity.</h1>
-        <p>
-          See who paid, what is due, and how every amount was calculated without losing the human feel of a real household.
-        </p>
+        <div className="welcome-kicker">A little more together</div>
+        <h1>HouseShare</h1>
+        <p>Shared expenses. Stronger homes.</p>
       </div>
 
       <div className="welcome-proof-grid">
@@ -955,7 +966,7 @@ function WelcomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
             textDecoration: "none",
           }}
         >
-          Enter household <ArrowRight size={17} />
+          Log in <ArrowRight size={17} />
         </a>
         <a
           href="#register"
@@ -1146,8 +1157,8 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
   const [birthdate, setBirthdate] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(true);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [role, setRole] = useState<"main" | "tenant">("tenant");
   const [household, setHousehold] = useState("");
   const [faceVerified, setFaceVerified] = useState(false);
@@ -1159,9 +1170,9 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedPhone = normalizePHPhone(phone);
   const hasFullName = name.trim().split(/\s+/).length >= 2;
-  const phoneValid = /^639\d{9}$/.test(normalizedPhone);
+  const phoneValid = /^09\d{9}$/.test(phone);
   const emailTaken = accounts.some((member) => memberEmail(member).toLowerCase() === normalizedEmail);
-  const phoneTaken = Boolean(normalizedPhone) && accounts.some((member) => member.phone === normalizedPhone);
+  const phoneTaken = Boolean(normalizedPhone) && accounts.some((member) => normalizePHPhone(member.phone ?? "") === normalizedPhone);
   const passwordValid = password.length >= 8;
 
   const inp = (val: string, set: (v: string) => void, placeholder: string, type = "text") => (
@@ -1175,6 +1186,7 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
     />
   );
   const completeRegistration = () => {
+    if (!privacyAccepted || !hasFullName || !phoneValid || emailTaken || phoneTaken || !passwordValid || password !== confirm) return;
     if (!household || !name || !email) return;
     if (role === "tenant" && !tenantInviteValid) {
       setInviteError("Invitation declined. Tenants need a valid household invite link or code from the main tenant.");
@@ -1196,6 +1208,7 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
       email: normalizedEmail,
       phone: normalizedPhone,
       birthdate,
+      privacyConsent: { acceptedAt: new Date().toISOString(), noticeVersion: "registration-v1", purpose: "Account creation and household membership review" },
       idType,
       faceImageLabel: faceVerified ? `${first.toLowerCase()}_${last.toLowerCase()}_face_capture.jpg` : undefined,
       idImageLabel: idUploaded ? `${idType.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_upload.jpg` : undefined,
@@ -1205,13 +1218,11 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
   const continuePersonalDetails = () => {
     const nextError =
       !hasFullName ? "Enter first name and last name." :
-      !normalizedEmail ? "Enter a valid email address." :
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ? "Enter a valid email address." :
       emailTaken ? "That email is already used by another account." :
       !birthdate ? "Enter your birthdate." :
-      !phoneValid ? "Enter a valid PH mobile number, e.g. +639171234567." :
+      !phoneValid ? "Enter 11 digits starting with 09, for example 09171234567." :
       phoneTaken ? "That phone number is already used by another account." :
-      !passwordValid ? "Password must be at least 8 characters." :
-      password !== confirm ? "Passwords do not match." :
       "";
     setFormError(nextError);
     if (!nextError) setStep(2);
@@ -1220,21 +1231,21 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
   return (
     <div className="auth-screen register-screen" style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", padding: "52px 28px 32px" }}>
       <div className="ambient-ribbon ribbon-one" />
-      <button onClick={() => step === 1 ? onNav("welcome") : setStep(1)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13, textAlign: "left", marginBottom: 24, padding: 0, fontFamily: "Outfit, sans-serif", fontWeight: 600 }}>
+      <button onClick={() => { setFormError(""); step === 1 ? onNav("welcome") : setStep(step - 1); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13, textAlign: "left", marginBottom: 24, padding: 0, fontFamily: "Outfit, sans-serif", fontWeight: 600 }}>
         ← {step === 1 ? "Back" : "Previous"}
       </button>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 28 }}>
-        {[1, 2].map((s) => (
+        {[1, 2, 3].map((s) => (
           <div className="progress-bar" key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: s <= step ? C.primary : C.border, transition: "background 0.3s" }} />
         ))}
       </div>
 
       <h1 style={{ fontFamily: "Outfit, sans-serif", fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 4 }}>
-        {step === 1 ? "Create Account" : "Your Household"}
+        {step === 1 ? "Create Account" : step === 2 ? "Secure Your Account" : "Your Household"}
       </h1>
       <p style={{ color: C.muted, fontSize: 13, marginBottom: 28 }}>
-        {step === 1 ? "Step 1 of 2 — Personal details" : "Step 2 of 2 — Household setup"}
+        Step {step} of 3 - {step === 1 ? "Personal details" : step === 2 ? "Password and privacy" : "Household setup"}
       </p>
 
       {step === 1 && (
@@ -1256,29 +1267,35 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
             className="auth-input"
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(clampPHPhoneInput(e.target.value))}
-            placeholder="PH Mobile Number e.g. +639171234567"
-            maxLength={13}
+            onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
+            placeholder="0917 123 4567"
+            aria-label="Philippine mobile number"
+            aria-describedby="registration-phone-help"
+            inputMode="numeric"
+            autoComplete="tel-national"
+            maxLength={11}
             style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
           />
+          <p id="registration-phone-help" style={{ fontSize: 12, color: C.muted }}>PH mobile number: 11 digits, starting with 09.</p>
+          {formError && <p role="alert" style={{ color: C.unpaid }}>{formError}</p>}
+          <button className="primary-action" onClick={continuePersonalDetails}>Continue</button>
+          <button onClick={() => onNav("login")} style={{ color: C.primary, background: "none", border: "none", cursor: "pointer" }}>Already have an account? Log In</button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ position: "relative" }}>
             <input
               className="auth-input"
-              type={showPassword ? "text" : "password"}
+              type="text"
+              aria-label="Create Password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Create Password"
               style={{ width: "100%", padding: "13px 46px 13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
             />
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setShowPassword((visible) => !visible)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted }}
-            >
-              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
           </div>
           <div style={{ position: "relative" }}>
             <input
@@ -1287,6 +1304,8 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Confirm Password"
+              aria-label="Confirm Password"
+              autoComplete="new-password"
               style={{ width: "100%", padding: "13px 46px 13px 14px", borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.bg, color: C.text, fontFamily: "Inter, sans-serif", boxSizing: "border-box", outline: "none" }}
             />
             <button
@@ -1300,8 +1319,16 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
             </button>
           </div>
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.45 }}>
-            Phone format: +63 plus 10 mobile digits. Password minimum: 8 characters.
+            Password minimum: 8 characters. Confirm Password is hidden until you select the eye icon.
           </div>
+          <details style={{ color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
+            <summary style={{ cursor: "pointer", color: C.text }}>Privacy notice</summary>
+            <p>HouseShare uses your name, birthday, contact details, and submitted identity details to create your account and support household membership review. The household main tenant can review submitted identity details. This prototype keeps account data and your acknowledgement in memory; refreshing clears this record. Do not submit real identity documents in this demo.</p>
+          </details>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, color: C.text, fontSize: 13, lineHeight: 1.5 }}>
+            <input type="checkbox" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} style={{ marginTop: 4, flexShrink: 0 }} />
+            <span>I have read the privacy notice and agree to the described use of my information. Data Privacy Act acknowledgement.</span>
+          </label>
           {formError && (
             <div style={{ background: C.unpaidBg, border: `1px solid ${C.unpaid}40`, color: C.unpaid, borderRadius: 12, padding: "10px 12px", fontSize: 12, lineHeight: 1.45 }}>
               {formError}
@@ -1309,7 +1336,11 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
           )}
           <button
             className="primary-action"
-            onClick={continuePersonalDetails}
+            onClick={() => {
+              const error = !passwordValid ? "Password must be at least 8 characters." : password !== confirm ? "Passwords do not match." : !privacyAccepted ? "Read and acknowledge the privacy notice to continue." : "";
+              setFormError(error);
+              if (!error) setStep(3);
+            }}
             style={{ marginTop: 8, background: C.primary, color: "#fff", border: "none", borderRadius: 14, padding: "15px 0", fontSize: 16, fontWeight: 700, fontFamily: "Outfit, sans-serif", cursor: "pointer", opacity: (name && email && birthdate && phone && password && confirm) ? 1 : 0.5 }}
           >
             Continue
@@ -1321,7 +1352,7 @@ function RegisterScreen({ onNav, onRegister, nextMemberId, inviteCodes, accounts
         </div>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <div className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
             <p style={{ fontSize: 13, color: C.muted, marginBottom: 8, fontWeight: 600 }}>Your Role</p>
@@ -1414,7 +1445,7 @@ function DashboardScreen({
         <div className="dashboard-showcase">
           <div>
             <div className="screen-prelude-label">{household.name}</div>
-            <h2>{manager ? "Manager view for household money." : "Household money, live and beautifully clear."}</h2>
+            <h2>{manager ? "Your household, together." : "A clearer view of home."}</h2>
             <p>{manager ? `${pendingQueue.length} payment needs your review.` : unpaidCount === 0 ? "Everyone is settled." : `${unpaidCount} bills need attention before ${nextDue}.`}</p>
           </div>
           <HiggsfieldScene compact />
@@ -2994,6 +3025,7 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
 
       {pendingLinkSource && selectedBank && linkSheetStep !== "closed" && (
         <div
+          className="account-link-overlay"
           style={{
             position: "fixed",
             inset: 0,
@@ -3007,6 +3039,7 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
           onClick={closeLinkSheet}
         >
           <div
+            className="account-link-sheet"
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
@@ -4159,7 +4192,7 @@ function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, on
       onBack={() => onNav("notifications")}
     >
       <div style={{ padding: "16px 20px 0" }}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
+        <div className="profile-summary" style={{ textAlign: "center", marginBottom: 24 }}>
           {profilePhotos[currentMember.id] ? (
             <div style={{ width: 72, height: 72, borderRadius: "50%", background: profilePhotos[currentMember.id], color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "Outfit, sans-serif", fontSize: 26, fontWeight: 900, border: `3px solid ${C.primaryLight}` }}>
               {currentMember.avatar}
@@ -4475,9 +4508,9 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: C.bg }}>
       <DesktopSidebar active={screen} onNav={onNav} currentMember={currentMember} onLogout={onLogout} />
-      <div style={{ marginLeft: 220, flex: 1, padding: "28px 32px", maxWidth: 1220 }}>
+      <div className="desktop-content" style={{ marginLeft: 220, flex: 1, padding: "28px 32px", maxWidth: 1220 }}>
         {/* Top bar */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+        <div className="desktop-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
           <div>
             <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Good evening,</p>
             <h1 style={{ fontFamily: "Outfit, sans-serif", fontSize: 26, fontWeight: 800, color: C.text, margin: "2px 0 0" }}>
@@ -4526,7 +4559,7 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
         </div>
 
         {/* KPI row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+        <div className="desktop-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
             {[
             { label: "Your Balance", value: peso(myUnpaid), sub: `${unpaidCount} unpaid expense${unpaidCount === 1 ? "" : "s"}`, color: C.primary, bg: C.primaryLight },
             { label: "Total Paid", value: peso(paidTotal), sub: "This month", color: C.paid, bg: C.paidBg },
@@ -4550,7 +4583,7 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
         </div>
 
         {/* Two-column content */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20 }}>
+        <div className="desktop-columns" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20 }}>
           {/* Expenses table */}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -4692,6 +4725,12 @@ export default function App() {
   const [profilePhotos, setProfilePhotos] = useState<Record<number, string>>({});
   const [theme, setTheme] = useState<"light" | "dark">("light");
   Object.assign(C, theme === "dark" ? DARK_COLORS : LIGHT_COLORS);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    return () => { delete root.dataset.theme; };
+  }, [theme]);
 
   // Live expense statuses — updated when payments are made/accepted/rejected
   const [statuses, setStatuses] = useState<AppStatuses>({
@@ -5110,7 +5149,7 @@ export default function App() {
     return (
       <div style={{ display: "flex", minHeight: "100vh", background: C.bg }}>
         <DesktopSidebar active={screen} onNav={setScreen} currentMember={currentMember} onLogout={logout} />
-        <div style={{ marginLeft: 220, flex: 1, maxWidth: 680 }}>
+        <div className="desktop-page-content" style={{ marginLeft: 220, flex: 1, maxWidth: 680 }}>
           {screen === "expenses" && (
             <ExpensesScreen {...sharedNav} expensesLive={expensesLive} onSelectExpense={navToExpense} currentMember={currentMember} />
           )}
