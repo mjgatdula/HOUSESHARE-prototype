@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, Receipt, CreditCard, Users, BarChart2,
   Bell, Settings, Home, Zap, Droplets, Wifi, ShoppingBasket,
@@ -790,6 +790,8 @@ function DesktopSidebar({ active, onNav, currentMember, onLogout }: { active: st
           return (
             <button
               key={item.id}
+              className="sidebar-item"
+              aria-current={isActive ? "page" : undefined}
               onClick={() => onNav(item.id as Screen)}
               style={{
                 display: "flex",
@@ -949,7 +951,6 @@ function WelcomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
         <a
           href="#login"
           className="primary-action"
-          onPointerDown={() => onNav("login")}
           onClick={() => onNav("login")}
           style={{
             background: C.sidebarText,
@@ -971,7 +972,6 @@ function WelcomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
         <a
           href="#register"
           className="secondary-action"
-          onPointerDown={() => onNav("register")}
           onClick={() => onNav("register")}
           style={{
             background: "transparent",
@@ -1090,7 +1090,6 @@ function LoginScreen({ onNav, currentMember, onLogin, members }: { onNav: (s: Sc
             <a
               href="#dashboard"
               key={member.id}
-              onPointerDown={() => loginAs(member)}
               onClick={() => loginAs(member)}
               style={{
                 display: "flex",
@@ -1117,7 +1116,6 @@ function LoginScreen({ onNav, currentMember, onLogin, members }: { onNav: (s: Sc
         <a
           href="#dashboard"
           className="primary-action"
-          onPointerDown={() => loginAs()}
           onClick={() => loginAs()}
           style={{
             background: C.primary,
@@ -1140,7 +1138,7 @@ function LoginScreen({ onNav, currentMember, onLogin, members }: { onNav: (s: Sc
 
       <p style={{ textAlign: "center", marginTop: 28, color: C.muted, fontSize: 14 }}>
         No account yet?{" "}
-        <button onPointerDown={() => onNav("register")} onClick={() => onNav("register")} style={{ background: "none", border: "none", color: C.primary, fontWeight: 600, cursor: "pointer", fontSize: 14, padding: 0 }}>
+        <button onClick={() => onNav("register")} style={{ background: "none", border: "none", color: C.primary, fontWeight: 600, cursor: "pointer", fontSize: 14, padding: 0 }}>
           Create Account
         </button>
       </p>
@@ -1520,6 +1518,10 @@ function DashboardScreen({
                 <div
                   key={exp.id}
                   onClick={() => onSelectExpense(exp.id, "expense-detail")}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${exp.name}`}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectExpense(exp.id, "expense-detail"); } }}
                   className="expense-card"
                   style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: C.shadow }}
                 >
@@ -1731,6 +1733,10 @@ function ExpensesScreen({ onNav, expensesLive, onSelectExpense, currentMember }:
             <div
               key={exp.id}
               onClick={() => onSelectExpense(exp.id, "expense-detail")}
+              role="button"
+              tabIndex={0}
+              aria-label={`Open ${exp.name}`}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectExpense(exp.id, "expense-detail"); } }}
               className="expense-card"
               style={{
                 background: C.card,
@@ -1822,6 +1828,7 @@ function ExpenseDetailScreen({ onNav, expense, onPay, currentMember, members, me
       <div style={{ padding: "16px 20px 0" }}>
         {/* Header card */}
         <div
+          className="expense-detail-summary"
           style={{
             background: C.card,
             border: `1px solid ${C.border}`,
@@ -1863,6 +1870,8 @@ function ExpenseDetailScreen({ onNav, expense, onPay, currentMember, members, me
 
           <button
             onClick={() => setShowCalc(!showCalc)}
+            aria-expanded={showCalc}
+            aria-controls="expense-calculation"
             style={{
               marginTop: 14,
               background: C.primaryLight,
@@ -1882,6 +1891,7 @@ function ExpenseDetailScreen({ onNav, expense, onPay, currentMember, members, me
 
           {showCalc && (
             <div
+              id="expense-calculation"
               style={{
                 marginTop: 10,
                 background: C.primaryLight,
@@ -1983,6 +1993,13 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
   const [dueDate, setDueDate] = useState("");
   const [method, setMethod] = useState("Equal Split");
   const [awayDays, setAwayDays] = useState<Record<number, number[]>>({});
+  const [expenseError, setExpenseError] = useState("");
+  const validateExpense = () => {
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return "Enter an amount greater than zero.";
+    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) return "Use no more than two decimal places for the amount.";
+    if (!dueDate || !Number.isFinite(new Date(`${dueDate}T00:00:00`).getTime())) return "Choose a valid due date.";
+    return "";
+  };
   const categories = ["Rent", "Electricity", "Water", "Internet", "Groceries", "Household Supplies", "Other"];
   const methods = ["Equal Split", "Custom Amount", "Percentage", "Selected Members", "Occupancy-Based"];
   const manager = household.mainTenantId === currentMember.id;
@@ -2090,7 +2107,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
               <label style={{ fontSize: 12, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6, fontFamily: "Outfit, sans-serif" }}>
                 Expense Name
               </label>
-              <input className="auth-input" style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. September Electricity" />
+              <input aria-label="Expense name" className="auth-input" style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. September Electricity" />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6, fontFamily: "Outfit, sans-serif" }}>
@@ -2102,6 +2119,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
                     className="filter-pill"
                     key={c}
                     onClick={() => setCategory(c)}
+                    aria-pressed={category === c}
                     style={{
                       padding: "7px 12px",
                       borderRadius: 20,
@@ -2123,13 +2141,13 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
               <label style={{ fontSize: 12, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6, fontFamily: "Outfit, sans-serif" }}>
                 Total Amount (₱)
               </label>
-              <input className="auth-input" style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" type="number" />
+              <input aria-label="Total amount in pesos" aria-describedby={expenseError ? "expense-form-error" : undefined} className="auth-input" style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" type="number" min="0.01" step="0.01" inputMode="decimal" />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6, fontFamily: "Outfit, sans-serif" }}>
                 Due Date
               </label>
-              <input className="auth-input" style={inputStyle} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <input aria-label="Expense due date" aria-describedby={expenseError ? "expense-form-error" : undefined} className="auth-input" style={inputStyle} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
           </div>
         )}
@@ -2144,6 +2162,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
                 className="choice-card"
                 key={m}
                 onClick={() => setMethod(m)}
+                aria-pressed={method === m}
                 style={{
                   padding: "14px 16px",
                   borderRadius: 12,
@@ -2213,6 +2232,8 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
                         key={i}
                         type="button"
                         onClick={() => toggleAwayDay(m.id, day)}
+                        aria-label={`${m.nick}: day ${day} away`}
+                        aria-pressed={isAway}
                         style={{
                           aspectRatio: "1",
                           borderRadius: 4,
@@ -2301,7 +2322,7 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Avatar initials={m.avatar} color={m.color} size={26} />
                     <span style={{ fontSize: 13, color: C.text }}>{m.nick}</span>
-                    {method === "Occupancy-Based" && (
+                    {effectiveMethod === "Occupancy-Based" && (
                       <span style={{ fontSize: 11, color: C.muted }}>
                         {30 - (awayDays[m.id]?.length ?? 0)} days present
                       </span>
@@ -2316,8 +2337,13 @@ function AddExpenseScreen({ onNav, currentMember, members, household, onAddExpen
           </div>
         )}
 
+        {expenseError && <p id="expense-form-error" role="alert" style={{ color: C.unpaid, fontSize: 13, marginTop: 16 }}>{expenseError}</p>}
         <button
+          className="primary-action"
           onClick={() => {
+            const error = validateExpense();
+            setExpenseError(error);
+            if (error) { setStep(1); return; }
             if (step < 4) setStep(step + 1);
             else {
               onAddExpense({
@@ -2399,7 +2425,6 @@ function PaymentsScreen({ onNav, pendingQueue, pendingExpenses, expensesLive, my
             <a
               href="#verify-payments"
               className="notice-card"
-              onPointerDown={() => onNav("verify-payments")}
               onClick={() => onNav("verify-payments")}
               style={{
                 background: C.pendingBg,
@@ -2543,6 +2568,34 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [pendingLinkSource, setPendingLinkSource] = useState<LinkedFundingSource | null>(null);
   const [linkSheetStep, setLinkSheetStep] = useState<"closed" | "confirm" | "redirect" | "success">("closed");
+  const linkDialogRef = useRef<HTMLDivElement>(null);
+  const linkDialogOpen = linkSheetStep !== "closed";
+  useEffect(() => {
+    if (!linkDialogOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const focusable = () => Array.from(linkDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select, textarea, [tabindex="0"]') ?? []);
+    const frame = requestAnimationFrame(() => (focusable()[0] ?? linkDialogRef.current)?.focus());
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPendingLinkSource(null);
+        setLinkSheetStep("closed");
+      }
+      if (event.key === "Tab") {
+        const items = focusable();
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (!first) { event.preventDefault(); linkDialogRef.current?.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || !linkDialogRef.current?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !linkDialogRef.current?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", handleKey); if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [linkDialogOpen]);
+  useEffect(() => {
+    if (linkDialogOpen && !linkDialogRef.current?.contains(document.activeElement)) linkDialogRef.current?.focus();
+  }, [linkSheetStep, linkDialogOpen]);
   const exp = expense;
 
   const isCash = method === "Cash";
@@ -2715,6 +2768,11 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
           <div
             className="choice-card"
             onClick={() => setShowBanks(!showBanks)}
+            role="button"
+            tabIndex={0}
+            aria-label={selectedBank ? `Change bank: ${selectedBank.label}` : "Select Bank"}
+            aria-expanded={showBanks}
+            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setShowBanks((open) => !open); } }}
             style={{
               background: isBank ? C.primaryLight : C.card,
               border: `2px solid ${isBank ? C.primary : C.border}`,
@@ -2758,6 +2816,10 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
                   className="activity-row"
                   key={bank.id}
                   onClick={() => selectMethod(bank.id)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={bank.label}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMethod(bank.id); } }}
                   style={{
                     padding: "12px 16px",
                     display: "flex",
@@ -3040,6 +3102,11 @@ function MakePaymentScreen({ onNav, expense, onSubmit, linkedSources, onLinkSour
         >
           <div
             className="account-link-sheet"
+            ref={linkDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Link ${selectedBank.label}`}
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
@@ -3197,12 +3264,12 @@ function PaymentSubmittedScreen({ onNav, expense, currentMember, reviewerName }:
 function VerifyPaymentsScreen({ onNav, pendingExpenses, onAccept, onReject, currentMember, members }: {
   onNav: (s: Screen) => void;
   pendingExpenses: Array<typeof EXPENSES[number] & { submittedBy?: number; submittedAt?: string; paymentMethod?: string }>;
-  onAccept: (id: number) => void;
-  onReject: (id: number) => void;
+  onAccept: (id: number, memberId: number) => void;
+  onReject: (id: number, memberId: number, reason: string) => void;
   currentMember: DemoMember;
   members: DemoMember[];
 }) {
-  const [rejectedId, setRejectedId] = useState<number | null>(null);
+  const [rejectedId, setRejectedId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const manager = isMainTenant(currentMember);
 
@@ -3260,9 +3327,10 @@ function VerifyPaymentsScreen({ onNav, pendingExpenses, onAccept, onReject, curr
           pendingExpenses.map((exp) => {
             const submitterMember = members.find((member) => member.id === exp.submittedBy) ?? members[0] ?? currentMember;
             const submitter = { name: submitterMember.name, initials: submitterMember.avatar, color: submitterMember.color };
-            const isRejecting = rejectedId === exp.id;
+            const receiptKey = `${exp.id}:${exp.submittedBy}`;
+            const isRejecting = rejectedId === receiptKey;
             return (
-              <div key={exp.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px", marginBottom: 14 }}>
+              <div key={receiptKey} role="region" aria-label={`Payment from ${submitter.name} for ${exp.name}`} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                     <Avatar initials={submitter.initials} color={submitter.color} size={40} />
                   <div>
@@ -3289,6 +3357,7 @@ function VerifyPaymentsScreen({ onNav, pendingExpenses, onAccept, onReject, curr
                   <div style={{ marginBottom: 12 }}>
                     <label style={{ fontSize: 12, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6, fontFamily: "Outfit, sans-serif" }}>REASON FOR REJECTION</label>
                     <textarea
+                      aria-label="Reason for rejection"
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       placeholder="Please upload a clearer payment receipt..."
@@ -3299,13 +3368,13 @@ function VerifyPaymentsScreen({ onNav, pendingExpenses, onAccept, onReject, curr
 
                 <div style={{ display: "flex", gap: 10 }}>
                   <button
-                    onClick={() => { onAccept(exp.id); onNav("payments"); }}
+                    onClick={() => { if (exp.submittedBy === undefined) return; onAccept(exp.id, exp.submittedBy); onNav("payments"); }}
                     style={{ flex: 1, background: C.paidBg, color: C.paid, border: `1.5px solid ${C.paid}`, borderRadius: 12, padding: "13px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "Outfit, sans-serif" }}
                   >
                     Accept
                   </button>
                   <button
-                    onClick={() => setRejectedId(isRejecting ? null : exp.id)}
+                    onClick={() => { setReason(""); setRejectedId(isRejecting ? null : receiptKey); }}
                     style={{ flex: 1, background: C.unpaidBg, color: C.unpaid, border: `1.5px solid ${C.unpaid}`, borderRadius: 12, padding: "13px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "Outfit, sans-serif" }}
                   >
                     Reject
@@ -3313,7 +3382,7 @@ function VerifyPaymentsScreen({ onNav, pendingExpenses, onAccept, onReject, curr
                 </div>
                 {isRejecting && (
                   <button
-                    onClick={() => { onReject(exp.id); onNav("payments"); }}
+                    onClick={() => { if (exp.submittedBy === undefined) return; onReject(exp.id, exp.submittedBy, reason.trim()); onNav("payments"); }}
                     style={{ marginTop: 10, background: C.unpaid, color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", width: "100%", fontFamily: "Outfit, sans-serif" }}
                   >
                     Send Rejection
@@ -3612,8 +3681,9 @@ function NotificationsScreen({ onNav, notifications, currentMember, household, a
     ? joinRequests.filter((request) => request.householdId === household.id && request.status === "Pending")
     : [];
 
-  const NotifItem = ({ n }: { n: AppNotification }) => (
+  const renderNotification = (n: AppNotification) => (
     <div
+      key={n.id}
       style={{
         padding: "14px 16px",
         display: "flex",
@@ -3712,7 +3782,7 @@ function NotificationsScreen({ onNav, notifications, currentMember, household, a
           <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, fontFamily: "Outfit, sans-serif", letterSpacing: 0.5 }}>TODAY</div>
         </div>
         <div style={{ background: C.card, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
-          {today.length > 0 ? today.map((n) => <NotifItem key={n.id} n={n} />) : (
+          {today.length > 0 ? today.map(renderNotification) : (
             <div style={{ padding: "18px 20px", fontSize: 13, color: C.muted }}>No notifications today.</div>
           )}
         </div>
@@ -3721,7 +3791,7 @@ function NotificationsScreen({ onNav, notifications, currentMember, household, a
           <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, fontFamily: "Outfit, sans-serif", letterSpacing: 0.5 }}>EARLIER</div>
         </div>
         <div style={{ background: C.card, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
-          {earlier.length > 0 ? earlier.map((n) => <NotifItem key={n.id} n={n} />) : (
+          {earlier.length > 0 ? earlier.map(renderNotification) : (
             <div style={{ padding: "18px 20px", fontSize: 13, color: C.muted }}>No earlier notifications.</div>
           )}
         </div>
@@ -3884,16 +3954,20 @@ function ReportsScreen({ onNav, household, expensesLive, members, memberStatuses
 
 // ── Profile Screen ─────────────────────────────────────────────────────────
 // ── Security Screen ────────────────────────────────────────────────────────
+function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onToggle}
+      style={{ width: 44, height: 28, padding: 0, border: `1px solid ${C.border}`, borderRadius: 14, background: on ? C.primary : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+      <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 20 : 3, transition: "left 0.2s" }} />
+    </button>
+  );
+}
+
 function SecurityScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const [biometric, setBiometric] = useState(true);
   const [twoFactor, setTwoFactor] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState("15 minutes");
 
-  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <div onClick={onToggle} style={{ width: 44, height: 24, borderRadius: 12, background: on ? C.primary : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
-      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }} />
-    </div>
-  );
 
   return (
     <MobileShell activeNav="notifications" onNav={onNav} title="Security" onBack={() => onNav("profile")}>
@@ -3910,7 +3984,7 @@ function SecurityScreen({ onNav }: { onNav: (s: Screen) => void }) {
                 <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 14, fontWeight: 600, color: C.text }}>{item.label}</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{item.sub}</div>
               </div>
-              <Toggle on={item.on} onToggle={item.toggle} />
+              <Toggle label={item.label} on={item.on} onToggle={item.toggle} />
             </div>
           ))}
         </div>
@@ -3964,11 +4038,6 @@ function NotifPrefsScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const [prefs, setPrefs] = useState({ dueReminders: true, paymentSubmitted: true, paymentAccepted: true, paymentRejected: true, newExpense: true, householdInvite: false, activityFeed: false });
   const toggle = (key: keyof typeof prefs) => setPrefs((p) => ({ ...p, [key]: !p[key] }));
 
-  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <div onClick={onToggle} style={{ width: 44, height: 24, borderRadius: 12, background: on ? C.primary : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
-      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }} />
-    </div>
-  );
 
   const groups = [
     { label: "PAYMENTS", items: [
@@ -3998,7 +4067,7 @@ function NotifPrefsScreen({ onNav }: { onNav: (s: Screen) => void }) {
                     <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 14, fontWeight: 600, color: C.text }}>{item.label}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{item.sub}</div>
                   </div>
-                  <Toggle on={prefs[item.key]} onToggle={() => toggle(item.key)} />
+                  <Toggle label={item.label} on={prefs[item.key]} onToggle={() => toggle(item.key)} />
                 </div>
               ))}
             </div>
@@ -4014,11 +4083,6 @@ function PrivacyScreen({ onNav }: { onNav: (s: Screen) => void }) {
   const [showBalance, setShowBalance] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
 
-  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <div onClick={onToggle} style={{ width: 44, height: 24, borderRadius: 12, background: on ? C.primary : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
-      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }} />
-    </div>
-  );
 
   return (
     <MobileShell activeNav="notifications" onNav={onNav} title="Privacy" onBack={() => onNav("profile")}>
@@ -4035,7 +4099,7 @@ function PrivacyScreen({ onNav }: { onNav: (s: Screen) => void }) {
                 <div style={{ fontFamily: "Outfit, sans-serif", fontSize: 14, fontWeight: 600, color: C.text }}>{item.label}</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{item.sub}</div>
               </div>
-              <Toggle on={item.on} onToggle={item.toggle} />
+              <Toggle label={item.label} on={item.on} onToggle={item.toggle} />
             </div>
           ))}
         </div>
@@ -4172,7 +4236,7 @@ function HouseholdSettingsScreen({ onNav, household, currentMember }: { onNav: (
   );
 }
 
-function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, onToggleTheme, profilePhotos, onSetProfilePhoto }: { onNav: (s: Screen) => void; onReset: () => void; currentMember: DemoMember; linkedSources: LinkedFundingSource[]; theme: "light" | "dark"; onToggleTheme: () => void; profilePhotos: Record<number, string>; onSetProfilePhoto: (memberId: number, value: string) => void }) {
+function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, onToggleTheme, profilePhotos, onSetProfilePhoto, householdName, onSaveNickname }: { onNav: (s: Screen) => void; onReset: () => void; currentMember: DemoMember; linkedSources: LinkedFundingSource[]; theme: "light" | "dark"; onToggleTheme: () => void; profilePhotos: Record<number, string>; onSetProfilePhoto: (memberId: number, value: string) => void; householdName: string; onSaveNickname: (nickname: string) => void }) {
   const [nick, setNick] = useState(currentMember.nick);
   const [editing, setEditing] = useState(false);
   const linkedAccounts = linkedSources.map((source) => ({
@@ -4204,7 +4268,7 @@ function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, on
             {currentMember.name}
           </h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{memberEmail(currentMember)} · {currentMember.role}</p>
-          <p style={{ color: C.muted, fontSize: 13 }}>Sunrise Apartment</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>{householdName}</p>
           <button onClick={() => onSetProfilePhoto(currentMember.id, `linear-gradient(135deg, ${currentMember.color}, ${C.accent})`)} style={{ marginTop: 10, border: `1px solid ${C.border}`, background: C.card, color: C.primary, borderRadius: 999, padding: "8px 12px", fontFamily: "Outfit, sans-serif", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
             <Camera size={14} style={{ verticalAlign: "middle", marginRight: 6 }} /> Edit profile photo
           </button>
@@ -4241,6 +4305,7 @@ function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, on
                 <>
                   <input
                     value={nick}
+                    aria-label="Nickname"
                     onChange={(e) => setNick(e.target.value)}
                     style={{
                       flex: 1,
@@ -4255,7 +4320,8 @@ function ProfileScreen({ onNav, onReset, currentMember, linkedSources, theme, on
                     }}
                   />
                   <button
-                    onClick={() => setEditing(false)}
+                    disabled={!nick.trim()}
+                    onClick={() => { onSaveNickname(nick.trim()); setEditing(false); }}
                     style={{
                       background: C.primary,
                       color: "#fff",
@@ -4510,6 +4576,14 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
       <DesktopSidebar active={screen} onNav={onNav} currentMember={currentMember} onLogout={onLogout} />
       <div className="desktop-content" style={{ marginLeft: 220, flex: 1, padding: "28px 32px", maxWidth: 1220 }}>
         {/* Top bar */}
+        <header className="household-masthead">
+          <div>
+            <span className="ledger-eyebrow">HOUSESHARE / OVERVIEW</span>
+            <h2>{household.name}</h2>
+            <p><Users size={14} aria-hidden="true" /> {members.length} members <span aria-hidden="true">/</span> Shared living, accounted for.</p>
+          </div>
+          <img src={HIGGSFIELD_HERO_IMAGE} alt="" />
+        </header>
         <div className="desktop-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
           <div>
             <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Good evening,</p>
@@ -4578,7 +4652,7 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
           ))}
         </div>
 
-        <div style={{ maxWidth: 460, marginBottom: 22 }}>
+        <div className="desktop-cycle" style={{ maxWidth: 460, marginBottom: 22 }}>
           <BillingCycleChart compact />
         </div>
 
@@ -4612,7 +4686,10 @@ function DesktopDashboard({ screen, onNav, expensesLive, myUnpaid, unpaidCount, 
                   {expensesLive.map((exp, i) => (
                     <tr
                       key={exp.id}
-                      onClick={() => onNav("expense-detail")}
+                      tabIndex={0}
+                      aria-label={`Open ${exp.name}`}
+                      onClick={() => onSelectExpense(exp.id, "expense-detail")}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectExpense(exp.id, "expense-detail"); } }}
                       style={{
                         borderBottom: i < expensesLive.length - 1 ? `1px solid ${C.border}` : "none",
                         cursor: "pointer",
@@ -4711,7 +4788,13 @@ type AppStatuses = Record<number, StatusKey>;
 
 // ── Root App ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("welcome");
+  const [screen, setScreenState] = useState<Screen>("welcome");
+  const setScreen = (next: Screen) => {
+    if (window.location.hash !== `#${next}`) {
+      window.history.pushState(null, "", `#${next}`);
+    }
+    setScreenState(next);
+  };
   const [isWide, setIsWide] = useState(window.innerWidth >= 900);
   const [selectedExpenseId, setSelectedExpenseId] = useState<number>(2);
   const [selectedMemberId, setSelectedMemberId] = useState<number>(2);
@@ -4771,7 +4854,7 @@ export default function App() {
     ];
     const syncFromHash = () => {
       const next = window.location.hash.replace("#", "") as Screen;
-      if (validScreens.includes(next)) setScreen(next);
+      if (validScreens.includes(next)) setScreenState(next);
     };
     syncFromHash();
     window.addEventListener("hashchange", syncFromHash);
@@ -4807,7 +4890,7 @@ export default function App() {
     .map((receipt) => {
       const expense = householdExpensesBase.find((e) => e.id === receipt.expenseId);
       return expense
-        ? { ...expense, status: "Pending Verification" as StatusKey, submittedBy: receipt.memberId, submittedAt: receipt.submittedAt, paymentMethod: receipt.method }
+        ? { ...expense, myShare: expenseShares[expense.id]?.[receipt.memberId] ?? Math.round((expense.total / splitCount) * 100) / 100, status: "Pending Verification" as StatusKey, submittedBy: receipt.memberId, submittedAt: receipt.submittedAt, paymentMethod: receipt.method }
         : null;
     })
     .filter((expense): expense is typeof EXPENSES[number] & { submittedBy: number; submittedAt: string; paymentMethod: string } => Boolean(expense));
@@ -4877,15 +4960,16 @@ export default function App() {
     ]);
   };
 
-  const acceptPayment = (expenseId: number) => {
-    const receipt = pendingReceipts.find((item) => item.expenseId === expenseId);
+  const acceptPayment = (expenseId: number, memberId: number) => {
+    if (!manager || !managerPendingExpenses.some((item) => item.id === expenseId && item.submittedBy === memberId)) return;
+    const receipt = pendingReceipts.find((item) => item.expenseId === expenseId && item.memberId === memberId);
     if (!receipt) return;
     setMemberStatuses((prev) => {
       const memberRecord = prev[receipt.memberId] ?? {};
       return { ...prev, [receipt.memberId]: { ...memberRecord, [expenseId]: "Paid" } };
     });
     setPendingReceipts((prev) => prev.filter((item) => !(item.expenseId === expenseId && item.memberId === receipt.memberId)));
-    const expenseName = EXPENSES.find((e) => e.id === expenseId)?.name ?? "your payment";
+    const expenseName = householdExpensesBase.find((e) => e.id === expenseId)?.name ?? "your payment";
     const approverName = currentMember.nick;
     setNotifications((prev) => [
       {
@@ -4900,20 +4984,21 @@ export default function App() {
     ]);
   };
 
-  const rejectPayment = (expenseId: number) => {
-    const receipt = pendingReceipts.find((item) => item.expenseId === expenseId);
+  const rejectPayment = (expenseId: number, memberId: number, reason: string) => {
+    if (!manager || !managerPendingExpenses.some((item) => item.id === expenseId && item.submittedBy === memberId)) return;
+    const receipt = pendingReceipts.find((item) => item.expenseId === expenseId && item.memberId === memberId);
     if (!receipt) return;
     setMemberStatuses((prev) => {
       const memberRecord = prev[receipt.memberId] ?? {};
       return { ...prev, [receipt.memberId]: { ...memberRecord, [expenseId]: "Rejected" } };
     });
     setPendingReceipts((prev) => prev.filter((item) => !(item.expenseId === expenseId && item.memberId === receipt.memberId)));
-    const expenseName = EXPENSES.find((e) => e.id === expenseId)?.name ?? "your payment";
+    const expenseName = householdExpensesBase.find((e) => e.id === expenseId)?.name ?? "your payment";
     const approverName = currentMember.nick;
     setNotifications((prev) => [
       {
         id: Date.now(),
-        text: `${approverName} rejected your receipt for ${expenseName}. Please upload a clearer proof.`,
+        text: `${approverName} rejected your receipt for ${expenseName}. ${reason || "Please upload a clearer proof."}`,
         time: "Just now",
         Icon: BellRing,
         today: true,
@@ -4957,7 +5042,7 @@ export default function App() {
   };
 
   const addExpense = (draft: { name: string; category: string; total: number; due: string; method: string; Icon: typeof Home; shares: Record<number, number> }) => {
-    if (!draft.total || draft.total <= 0) return;
+    if (!manager || !Number.isFinite(draft.total) || draft.total <= 0) return;
     const nextExpense: ExpenseRecord = {
       id: Date.now(),
       name: draft.name,
@@ -5121,6 +5206,10 @@ export default function App() {
 
   // ── Shared props bundles ──────────────────────────────────────────────────
   const sharedNav = { onNav: setScreen };
+  const sharedProfileState = {
+    householdName: currentHousehold.name,
+    onSaveNickname: (nickname: string) => setMembers((previous) => previous.map((member) => member.id === currentMember.id ? { ...member, nick: nickname } : member)),
+  };
 
   const DESKTOP_SCREENS: Screen[] = [
     "dashboard", "expenses", "payments", "household", "reports", "notifications", "profile",
@@ -5174,7 +5263,7 @@ export default function App() {
           {screen === "member-detail" && <MemberDetailScreen {...sharedNav} memberId={selectedMemberId} members={approvedMembers} household={currentHousehold} expensesLive={expensesLive} memberStatuses={memberStatuses} expenseShares={expenseShares} />}
           {screen === "reports" && <ReportsScreen {...sharedNav} household={currentHousehold} expensesLive={expensesLive} members={approvedMembers} memberStatuses={memberStatuses} expenseShares={expenseShares} />}
           {screen === "notifications" && <NotificationsScreen {...sharedNav} notifications={notifications} currentMember={currentMember} household={currentHousehold} accounts={members} joinRequests={joinRequests} onAcceptJoin={acceptJoinRequest} onRejectJoin={rejectJoinRequest} />}
-          {screen === "profile" && <ProfileScreen {...sharedNav} onReset={resetDemo} currentMember={currentMember} linkedSources={linkedSources} theme={theme} onToggleTheme={() => setTheme((t) => t === "dark" ? "light" : "dark")} profilePhotos={profilePhotos} onSetProfilePhoto={(id, value) => setProfilePhotos((prev) => ({ ...prev, [id]: value }))} />}
+          {screen === "profile" && <ProfileScreen {...sharedNav} {...sharedProfileState} onReset={resetDemo} currentMember={currentMember} linkedSources={linkedSources} theme={theme} onToggleTheme={() => setTheme((t) => t === "dark" ? "light" : "dark")} profilePhotos={profilePhotos} onSetProfilePhoto={(id, value) => setProfilePhotos((prev) => ({ ...prev, [id]: value }))} />}
           {screen === "security" && <SecurityScreen {...sharedNav} />}
           {screen === "notif-prefs" && <NotifPrefsScreen {...sharedNav} />}
           {screen === "privacy" && <PrivacyScreen {...sharedNav} />}
@@ -5282,7 +5371,7 @@ export default function App() {
     case "reports":
       return <ReportsScreen onNav={setScreen} household={currentHousehold} expensesLive={expensesLive} members={approvedMembers} memberStatuses={memberStatuses} expenseShares={expenseShares} />;
     case "profile":
-      return <ProfileScreen onNav={setScreen} onReset={resetDemo} currentMember={currentMember} linkedSources={linkedSources} theme={theme} onToggleTheme={() => setTheme((t) => t === "dark" ? "light" : "dark")} profilePhotos={profilePhotos} onSetProfilePhoto={(id, value) => setProfilePhotos((prev) => ({ ...prev, [id]: value }))} />;
+      return <ProfileScreen {...sharedProfileState} onNav={setScreen} onReset={resetDemo} currentMember={currentMember} linkedSources={linkedSources} theme={theme} onToggleTheme={() => setTheme((t) => t === "dark" ? "light" : "dark")} profilePhotos={profilePhotos} onSetProfilePhoto={(id, value) => setProfilePhotos((prev) => ({ ...prev, [id]: value }))} />;
     case "security":
       return <SecurityScreen onNav={setScreen} />;
     case "notif-prefs":
